@@ -126,8 +126,37 @@ jobs:
           mkdir -p "aibtc-skills/$SKILL_NAME"
           cp -r "$SKILL_PATH"/* "aibtc-skills/$SKILL_NAME/"
 
+          # what-to-do.md belongs at aibtcdev's top-level what-to-do/<name>.md
+          # (handled by the next step). Drop any stray copy that landed inside
+          # the skill folder via the recursive copy above so the upstream PR
+          # diff does not carry a duplicate.
+          rm -f "aibtc-skills/$SKILL_NAME/what-to-do.md"
+
           echo "Copied $SKILL_PATH/* to aibtc-skills/$SKILL_NAME/"
           ls -la "aibtc-skills/$SKILL_NAME/"
+
+      - name: Copy what-to-do workflow guide if present
+        run: |
+          SKILL_NAME="${{ steps.detect.outputs.skill_name }}"
+          SKILL_PATH="${{ steps.detect.outputs.skill_path }}"
+
+          # Per #483 Rule 2(d), composed skills ship with a workflow guide.
+          # Authors stage it at skills/<name>/what-to-do.md on bff-skills;
+          # we copy it to aibtc-skills/what-to-do/<name>.md at promotion time.
+          # The guide is intentionally NOT run through convert-frontmatter.js —
+          # workflow-guide frontmatter (title/description/skills/estimated-steps/
+          # order) is bff-flavor and matches upstream's expected schema.
+          if [ -f "$SKILL_PATH/what-to-do.md" ]; then
+            mkdir -p aibtc-skills/what-to-do
+            cp "$SKILL_PATH/what-to-do.md" "aibtc-skills/what-to-do/$SKILL_NAME.md"
+            # Apply the same path rewrite SKILL.md and AGENT.md receive earlier
+            # in this workflow, so command examples and file references inside
+            # the guide resolve under aibtcdev's root layout (no skills/ prefix).
+            sed -i "s|skills/$SKILL_NAME/|$SKILL_NAME/|g" "aibtc-skills/what-to-do/$SKILL_NAME.md"
+            echo "Copied $SKILL_PATH/what-to-do.md to aibtc-skills/what-to-do/$SKILL_NAME.md"
+          else
+            echo "::warning::No what-to-do.md found at $SKILL_PATH/ — skipping workflow-guide copy. Composed skills should ship a workflow guide per #483 Rule 2(d)."
+          fi
 
       - name: Regenerate skills.json manifest in fork
         run: |
@@ -171,6 +200,12 @@ jobs:
           git checkout -b "$BRANCH"
 
           git add "$SKILL_NAME/" skills.json
+          # Stage the workflow guide if the previous step copied one.
+          # Primitives skip this entirely; the directory is only created when
+          # a guide exists.
+          if [ -f "what-to-do/$SKILL_NAME.md" ]; then
+            git add "what-to-do/$SKILL_NAME.md"
+          fi
 
           # Write commit message to file to avoid shell quoting issues
           {
