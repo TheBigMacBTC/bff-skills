@@ -26,6 +26,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Setup Bun (for upstream manifest regen)
+        uses: oven-sh/setup-bun@v2
+
       - name: Detect skill folder from PR
         id: detect
         run: |
@@ -126,6 +129,14 @@ jobs:
           echo "Copied $SKILL_PATH/* to aibtc-skills/$SKILL_NAME/"
           ls -la "aibtc-skills/$SKILL_NAME/"
 
+      - name: Regenerate skills.json manifest in fork
+        run: |
+          cd aibtc-skills
+          bun install
+          bun run manifest
+          echo "Regenerated skills.json — diff vs upstream main:"
+          git diff --stat skills.json || true
+
       - name: Create PR to aibtcdev/skills via fork
         env:
           GH_TOKEN: ${{ secrets.AIBTC_SKILLS_PAT }}
@@ -159,7 +170,7 @@ jobs:
 
           git checkout -b "$BRANCH"
 
-          git add "$SKILL_NAME/"
+          git add "$SKILL_NAME/" skills.json
 
           # Write commit message to file to avoid shell quoting issues
           {
